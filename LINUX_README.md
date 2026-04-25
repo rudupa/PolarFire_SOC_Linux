@@ -53,6 +53,154 @@ A practical AV Linux software stack can be viewed in layers:
 5. AV applications
 - Sensor ingestion, perception, localization, planning, controls, HMI, diagnostics
 
+### 2.1 Layered AV Linux Architecture Diagram
+
+```text
++-----------------------------------------------------------------------------------+
+|                                AV APPLICATION LAYER                              |
+|  Perception | Localization | Planning | Control | Diagnostics | HMI | Telemetry |
++-----------------------------------------------------------------------------------+
+|                             MIDDLEWARE / IPC LAYER                               |
+|   DDS (in-vehicle real-time) | SOME/IP | Zenoh (edge fabric) | MQTT (cloud)     |
++-----------------------------------------------------------------------------------+
+|                         PLATFORM SERVICES / USER SPACE                            |
+| systemd | Lifecycle mgmt | Health monitor | OTA | Logging | Security | Time sync |
++-----------------------------------------------------------------------------------+
+|                           OS RUNTIME AND SYSTEM LAYER                             |
+| glibc/libstdc++ | BusyBox/coreutils | Network tools | Config and policy (/etc)   |
++-----------------------------------------------------------------------------------+
+|                          LINUX KERNEL AND DRIVER LAYER                            |
+| Scheduler | MM | VFS | Net stack | IPC | cgroups/namespaces | Modules | Drivers  |
+| Camera | LiDAR | Radar | CAN/LIN/FlexRay | GNSS/IMU | GPU/NPU | Storage | USB    |
++-----------------------------------------------------------------------------------+
+|                                 BSP / BOARD LAYER                                 |
+| Boot chain (HSS/U-Boot) | DT/DT overlays | Board init scripts | HW bring-up      |
++-----------------------------------------------------------------------------------+
+|                               HARDWARE / SILICON LAYER                            |
+| SoC | CPU | RAM | Flash/eMMC/SD | NIC/PHY | Sensors | Vehicle I/O                |
++-----------------------------------------------------------------------------------+
+```
+
+```mermaid
+flowchart TB
+	APP["Application Layer\nPerception | Localization | Planning | Control | HMI | Diagnostics"]
+	MID["Middleware Layer\nDDS | SOME/IP | Zenoh | MQTT"]
+	PFS["Platform Services (User Space)\nsystemd | OTA | Health | Logging | Security | Time Sync"]
+	OS["OS Runtime\nglibc/libstdc++ | tools | config/policy"]
+	KRN["Kernel and Drivers\nScheduler | MM | Net | VFS | modules | device drivers"]
+	BSP["BSP / Board Layer\nBootloader | Device Tree | board init | bring-up"]
+	HW["Hardware Layer\nSoC | CPU/GPU/NPU | memory | storage | sensors | vehicle buses"]
+
+	APP --> MID --> PFS --> OS --> KRN --> BSP --> HW
+```
+
+### 2.2 Common Architecture Variants
+
+The layered diagram above is a common reference model, not a single mandatory standard.
+Real AV programs usually adapt it based on safety level, compute topology, and product constraints.
+
+| Variant | Typical shape | Best fit | Trade-offs |
+|--------|----------------|----------|------------|
+| ROS 2 centric Linux stack | Linux hosts most AV graph, DDS-native communication | Fast feature development and research-to-product flow | Requires strict QoS and resource governance for determinism |
+| AUTOSAR Adaptive aligned | Service contracts and lifecycle driven by Adaptive concepts | Programs targeting stronger standardization and supplier interoperability | Higher integration complexity and process overhead |
+| Mixed-criticality split | Linux for high compute, RTOS/MCU for hard real-time safety loops | Safety-critical products needing strict isolation | More cross-domain integration and testing effort |
+| Hypervisor-separated domains | Linux and safety domain in separate partitions/VMs | Strong fault containment and certification boundaries | Added platform complexity and performance overhead |
+| Zonal + central compute | Zonal ECUs plus central HPC Linux nodes | Scalable vehicle architectures with domain aggregation | Networking and orchestration complexity |
+| Edge-cloud native Linux | Containerized services, telemetry-first operations | Fleet-centric products with rapid update cycles | Requires mature DevOps/SRE practices and observability |
+
+#### Variant Architecture Diagrams
+
+ROS 2 centric Linux stack:
+
+```mermaid
+flowchart TB
+	A[AV Apps: Perception / Planning / Control] --> R[ROS 2 Graph]
+	R --> D[DDS RMW]
+	D --> L[Linux Platform Services]
+	L --> K[Linux Kernel + Drivers]
+```
+
+AUTOSAR Adaptive aligned:
+
+```mermaid
+flowchart TB
+	AP[Adaptive Applications] --> COM[ara::com and Service Contracts]
+	AP --> EXE[Execution Management]
+	COM --> MW[Middleware Transport]
+	EXE --> P[Platform Services]
+	P --> K[Linux Kernel and BSP]
+```
+
+Mixed-criticality split:
+
+```mermaid
+flowchart LR
+	subgraph LinuxDomain[High Compute Linux Domain]
+		LAPP[Perception / Fusion / Planning]
+		LMW[Middleware and Logging]
+		LAPP --> LMW
+	end
+	subgraph SafetyDomain[Safety MCU or RTOS Domain]
+		CCTRL[Hard Real-Time Control]
+		CSAFE[Safety Monitors]
+		CCTRL --> CSAFE
+	end
+	LMW <--> G[Safety Gateway]
+	G <--> CCTRL
+```
+
+Hypervisor-separated domains:
+
+```mermaid
+flowchart TB
+	subgraph VM1[Guest VM: Linux AV Domain]
+		AV[AV Services and Middleware]
+	end
+	subgraph VM2[Guest VM: Safety Domain]
+		SAF[Safety Functions]
+	end
+	HV[Type-1 Hypervisor]
+	AV --> HV
+	SAF --> HV
+	HV --> HW[Shared Hardware Resources]
+```
+
+Zonal + central compute:
+
+```mermaid
+flowchart LR
+	Z1[Zonal ECU Front-Left] --> HPC[Central Compute Linux HPC]
+	Z2[Zonal ECU Front-Right] --> HPC
+	Z3[Zonal ECU Rear] --> HPC
+	HPC --> APP[Central AV Apps and Middleware]
+	APP --> CLOUD[Fleet and Cloud Services]
+```
+
+Edge-cloud native Linux:
+
+```mermaid
+flowchart LR
+	VEH[Vehicle Linux Node] --> CTR[Container Runtime]
+	CTR --> SVCS[Containerized AV Services]
+	SVCS --> OBS[Observability Stack]
+	SVCS --> OTA[OTA and Deployment Agent]
+	OBS --> EDGE[Edge Platform]
+	EDGE --> CLOUD[Cloud Control Plane]
+```
+
+### 2.3 Reading References for Linux AV Architecture
+
+- Linux kernel documentation: https://docs.kernel.org/
+- Buildroot manual: https://buildroot.org/docs.html
+- Yocto Project documentation: https://docs.yoctoproject.org/
+- AUTOSAR Adaptive Platform: https://www.autosar.org/standards/adaptive-platform/
+- SOAFEE: https://soafee.io/
+- Eclipse SDV: https://sdv.eclipse.org/
+- Automotive Grade Linux (AGL): https://www.automotivelinux.org/
+- ELISA project (Linux safety): https://elisa.tech/
+- ROS 2 architecture and design: https://design.ros2.org/
+- DDS specification (OMG): https://www.omg.org/spec/DDS/
+
 ## 3. Folder Structures (Embedded Linux Focus)
 
 ### 3.1 Root filesystem layout
