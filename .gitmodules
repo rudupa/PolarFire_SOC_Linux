@@ -4,3 +4,6 @@
 [submodule "buildroot-external-microchip"]
 	path = buildroot-external-microchip
 	url = https://github.com/rudupa/buildroot-external-microchip.git
+[submodule "av_services"]
+	path = av_services
+	url = https://github.com/rudupa/av_services.git
